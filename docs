@@ -1,0 +1,350 @@
+# LostLink — Software Requirements Specification (SRS) & Diagram Pack (v1.0)
+
+Prepared by: **Aung Bhone Myint**
+Project: **LostLink – Lost & Found Application**
+Date: **18 Aug 2025**
+
+---
+
+## 0. Revision History
+
+| Version | Date       | Author           | Notes                  |
+| ------- | ---------- | ---------------- | ---------------------- |
+| 1.0     | 2025-08-18 | Aung Bhone Myint | Initial SRS + diagrams |
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+LostLink digitizes the college/university Lost & Found process. It lets users post **lost** or **found** items, search and match items, and coordinate **claims** securely. This SRS defines the requirements for the first release.
+
+### 1.2 Scope
+
+* **Frontend:** Next.js (App Router), Tailwind CSS, shadcn/ui
+* **Backend (Phase 1):** Nest.js (REST), JWT auth
+* **DB:** MongoDB (Atlas) or PostgreSQL
+* **Object Storage:** Cloudinary (preferred) / local (dev)
+* **Email/Notifications:** SMTP (e.g., Resend/SendGrid) in Phase 2
+
+### 1.3 Definitions & Abbreviations
+
+* **L/F:** Lost/Found
+* **Post:** A user-submitted record of a lost or found item
+* **Claim:** A request by an owner to recover an item from a finder
+* **Admin:** Privileged user who moderates content and resolves disputes
+
+### 1.4 Stakeholders & Users
+
+* **End Users:** Students, staff, faculty
+* **Administrators:** Student services / IT team
+* **Developers & QA:** Project team maintaining LostLink
+
+---
+
+## 2. Overall Description
+
+### 2.1 Product Perspective
+
+LostLink is a greenfield web app with API-first design. Frontend consumes backend REST APIs. Images are uploaded to Cloudinary and referenced in DB.
+
+### 2.2 Product Functions (High-Level)
+
+* Register/Login/Logout
+* Create, read, update, delete (CRUD) posts for **Lost** and **Found**
+* Search & filter (category, location, date range, keywords)
+* Claim workflow (owner → finder → approval)
+* Admin moderation (remove spam, block users)
+
+### 2.3 User Classes & Characteristics
+
+* **Guest:** browse & search only
+* **Registered User:** create/manage posts, file claims
+* **Admin:** full moderation & analytics
+
+### 2.4 Operating Environment
+
+* Web browsers (latest Chrome/Edge/Firefox/Safari)
+* Node.js 20+, Next.js 14+, Nest.js 10+
+
+### 2.5 Assumptions & Dependencies
+
+* Users have institutional emails (optional SSO in future)
+* Network connectivity available for image uploads
+
+---
+
+## 3. System Features & Requirements
+
+### 3.1 Authentication & Authorization
+
+**Description:** Users register and log in to manage their posts and claims.
+**Priority:** Must-have
+
+**Functional Requirements**
+
+1. Users can register with email + password.
+2. Users can log in and receive a JWT access token (and refresh token if implemented).
+3. Only the **owner of a post** and **admins** can edit/delete it.
+4. Rate-limit auth endpoints to prevent brute force (e.g., 5/min/IP).
+
+**Acceptance Criteria**
+
+* Creating a post when unauthenticated redirects to login.
+* Auth tokens expire (e.g., 1h) and refresh is supported or enforced re-login.
+
+---
+
+### 3.2 Post Lost Item
+
+**Description:** Create a lost item post.
+
+**Functional Requirements**
+
+1. Fields: title, description, category, lostDate, lastSeenLocation, photos\[], contactPreference, reward(optional).
+2. Upload up to N photos (e.g., 5) with size limit (e.g., 5MB each).
+3. Post visibility defaults to **public**.
+
+**Acceptance Criteria**
+
+* Required fields validated client + server side.
+* Images successfully stored (Cloudinary) and URLs saved.
+
+---
+
+### 3.3 Post Found Item
+
+**Description:** Create a found item post.
+
+**Functional Requirements**
+
+1. Fields: title, description, category, foundDate, foundLocation, photos\[], holdingPlace (e.g., Security Desk).
+2. Finder can mark **handover location/time window**.
+
+**Acceptance Criteria**
+
+* Found posts appear in search within < 2s average.
+
+---
+
+### 3.4 Search & Filter
+
+**Description:** Full-text keyword and facet search.
+
+**Functional Requirements**
+
+1. Filter by type (Lost/Found), category, date range, location.
+2. Sort by date, relevance, proximity (if campus map enabled).
+3. Pagination (default 12/page).
+
+**Acceptance Criteria**
+
+* Queries < 500ms median for indexed fields.
+
+---
+
+### 3.5 Claim Workflow
+
+**Description:** Owner requests the return of an item from a found post.
+
+**Functional Requirements**
+
+1. Owner clicks **Claim** on a Found post; submits proof (text + optional image).
+2. Finder reviews claim → Approve/Reject.
+3. Admin can override and audit trail is recorded.
+4. On approval, post is marked **Resolved** and hidden from default search.
+
+**Acceptance Criteria**
+
+* Only one **active** claim per Found post.
+* Status transitions logged.
+
+---
+
+### 3.6 Notifications (Phase 2)
+
+* Email alerts on new matches, claim updates, admin actions.
+
+---
+
+## 4. Non-Functional Requirements (NFR)
+
+* **Security:** bcrypt password hashing; JWT; input sanitization; OWASP Top 10 checks.
+* **Performance:** P95 page load < 3s on 4G; API P95 < 800ms.
+* **Reliability:** Target 99.9% uptime; daily backups; recovery point ≤ 24h.
+* **Scalability:** Horizontal scaling of API and CDN-backed images.
+* **Usability:** Responsive UI; a11y (WCAG 2.1 AA where reasonable).
+* **Maintainability:** ESLint/Prettier; typed APIs; CI lint/test.
+
+---
+
+## 5. Data Model
+
+```mermaid
+erDiagram
+    USER ||--o{ POST : creates
+    USER ||--o{ CLAIM : files
+    POST ||--o{ CLAIM : has
+
+    USER {
+      string id PK
+      string name
+      string email UK
+      string passwordHash
+      string role  // guest|user|admin (guest is unauthenticated)
+      datetime createdAt
+      datetime updatedAt
+    }
+
+    POST {
+      string id PK
+      enum type // LOST|FOUND
+      string title
+      string description
+      string category
+      datetime eventDate // lostDate or foundDate
+      string location
+      string[] photos // URLs
+      string ownerId FK // creator
+      string status // OPEN|RESOLVED|ARCHIVED
+      datetime createdAt
+      datetime updatedAt
+    }
+
+    CLAIM {
+      string id PK
+      string postId FK
+      string claimantId FK // USER
+      string proofText
+      string[] proofPhotos // URLs
+      enum decision // PENDING|APPROVED|REJECTED
+      string decidedBy // USER (finder/admin) optional
+      datetime createdAt
+      datetime updatedAt
+    }
+```
+
+---
+
+## 6. API Endpoints (Nest.js – Draft)
+
+**Auth**
+
+* `POST /auth/register` → {id}
+* `POST /auth/login` → {accessToken\[, refreshToken]}
+
+**Posts**
+
+* `GET /posts` (query: type, q, category, location, from, to, page)
+* `GET /posts/:id`
+* `POST /posts` (auth)
+* `PATCH /posts/:id` (owner/admin)
+* `DELETE /posts/:id` (owner/admin)
+* `POST /uploads/images` → Cloudinary URL(s)
+
+**Claims**
+
+* `POST /posts/:id/claims` (auth)
+* `GET /claims/:id`
+* `PATCH /claims/:id` (finder/admin: decision)
+
+**Admin**
+
+* `GET /admin/reports/abuse`
+* `PATCH /admin/posts/:id/moderate`
+
+---
+## 7.system Model
+Flow Chart
+
+Use Case Diagram
+
+Diagrams (choose one approach and complete all its diagrams):
+
+Structured Approach: Data Flow Diagram (DFD), Flow Chart
+
+OOAD Approach: Class Diagram, Sequence Diagram, Activity Diagram
+
+Entity Relationship Diagram (ERD)
+
+
+## 8. UI/UX Requirements (Summary)
+
+* Clean, minimal UI; clear **Lost** vs **Found** segmentation
+* Prominent **Create Post** CTA; inline validation
+* Search on top; chip filters for category/date/location
+* Status badges: OPEN/RESOLVED/ARCHIVED
+
+---
+
+## 9. Security Requirements (Detail)
+
+* Passwords hashed with bcrypt (≥10 rounds)
+* JWT with short-lived access token; refresh token stored httpOnly
+* Input validation (class-validator) and sanitization
+* Role-based guards (user/admin) for mutations
+* Rate limiting & basic IP throttling on auth and upload routes
+
+---
+
+## 10. Deployment & DevOps
+
+* **Frontend:** Vercel (Next.js)
+* **Backend:** Render/ Railway/ Fly.io / AWS EC2 with Docker
+* **Env:** `.env` for secrets (never commit)
+* **CI:** Lint + unit tests on PR; auto-deploy to staging; manual promote to prod
+* **Backups:** Daily DB snapshot; Cloudinary retains originals
+
+---
+
+## 11. Test Plan (Outline)
+
+* **Unit Tests:** services, guards, repositories
+* **Integration:** auth flow, CRUD posts, claim transitions
+* **E2E:** happy paths for Lost/Found/Claim, admin moderation
+* **Non-Functional:** response times, basic load (k6), image upload size limits
+
+#Data dictionary
+1. User Table
+| Field Name     | Data Type | Size | Description                                       |
+| -------------- | --------- | ---- | ------------------------------------------------- |
+| user\_id (PK)  | INT       | —    | Unique identifier for each user                   |
+| name           | VARCHAR   | 100  | Full name of the user                             |
+| email          | VARCHAR   | 150  | Unique email address of the user (used for login) |
+| password\_hash | VARCHAR   | 255  | Encrypted password for security                   |
+| phone          | VARCHAR   | 15   | Contact phone number                              |
+| created\_at    | DATETIME  | —    | Date and time when the account was created        |
+
+2.Item tables
+| Field Name    | Data Type | Size | Description                                          |
+| ------------- | --------- | ---- | ---------------------------------------------------- |
+| item\_id (PK) | INT       | —    | Unique identifier for each lost/found item           |
+| title         | VARCHAR   | 150  | Title of the item (e.g., "Motorcycle Key")           |
+| description   | TEXT      | —    | Detailed description of the item                     |
+| category      | VARCHAR   | 50   | Category (e.g., Electronics, Accessories, Documents) |
+| location      | VARCHAR   | 255  | Location where item was lost/found                   |
+| status        | ENUM      | —    | Current state: "lost", "found", or "claimed"         |
+| created\_at   | DATETIME  | —    | Timestamp when the item was posted                   |
+| user\_id (FK) | INT       | —    | References the user who posted the item              |
+
+3.CLAIM TABLE
+| Field Name       | Data Type | Size | Description                                    |
+| ---------------- | --------- | ---- | ---------------------------------------------- |
+| claim\_id (PK)   | INT       | —    | Unique identifier for each claim               |
+| item\_id (FK)    | INT       | —    | References the claimed item                    |
+| claimer\_id (FK) | INT       | —    | User who makes the claim                       |
+| proof            | TEXT      | —    | Proof provided (text description or file link) |
+| status           | ENUM      | —    | Claim state: "pending", "approved", "rejected" |
+| created\_at      | DATETIME  | —    | Timestamp when the claim was made              |
+
+4.MESSAGE table
+| Field Name       | Data Type | Size | Description                              |
+| ---------------- | --------- | ---- | ---------------------------------------- |
+| message\_id (PK) | INT       | —    | Unique identifier for each message       |
+| sender\_id (FK)  | INT       | —    | User who sends the message               |
+| receiver\_id(FK) | INT       | —    | User who receives the message            |
+| item\_id (FK)    | INT       | —    | References the item the message is about |
+| content          | TEXT      | —    | Message text content                     |
+| created\_at      | DATETIME  | —    | Timestamp when the message was sent      |
+
