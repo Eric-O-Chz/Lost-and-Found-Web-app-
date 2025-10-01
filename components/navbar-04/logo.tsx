@@ -9,7 +9,7 @@ export const Logo = () => (
       animate={{ rotate: 360 }}
       transition={{ repeat: Infinity, duration: 4, ease: "linear" }}
     >
-      <Compass className="!h-10 !w-10 text-cyan-800 mt-5" />
+      <Compass className="!h-10 !w-10 text-blue-800 mt-5" />
     </motion.div>
     <motion.span
       className="font-extrabold font-serif text-3xl ml-2"

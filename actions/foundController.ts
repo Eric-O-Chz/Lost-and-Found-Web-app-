@@ -4,14 +4,22 @@ import { getUserFromCookie } from "@/lib/getUser";
 import { redirect } from "next/navigation";
 import { ObjectId } from "mongodb";
 import { getCollection } from "@/lib/db";
-import { error } from "console";
+import { v2 as cloudinary } from "cloudinary";
+import { toast } from "sonner";
 
+const cloudinaryConfig = cloudinary.config({
+  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 async function sharedFoundLogic(formData: FormData, user: any) {
+
 
     type RegisterErrors = {
         item?:string;
         place?:string;
+        photo?:string;
     }
     const errors: RegisterErrors = {}
     
@@ -20,10 +28,12 @@ async function sharedFoundLogic(formData: FormData, user: any) {
         place: formData.get("place"),
         category:formData.get("category"),
         author: ObjectId.createFromHexString(user.userId),
+        photo: formData.get("public_id"),
     }
 
     if (typeof foundItem.item != "string") foundItem.item = "";
     if (typeof foundItem.place != "string") foundItem.place = "";
+    if (typeof foundItem.photo != "string") foundItem.photo = "";
 
     foundItem.item = foundItem.item.replace(/(\r\n|\n|\r)/g," ").trim();
     foundItem.place = foundItem.place.replace(/(\r\n|\n|\r)/g," ").trim();
@@ -37,6 +47,16 @@ async function sharedFoundLogic(formData: FormData, user: any) {
 
     if (foundItem.item.length == 0) errors.item = "This field is required";
     if (foundItem.place.length == 0) errors.place = "This field is required";
+    if (foundItem.photo.length == 0) errors.photo = "This field is required";
+
+    //verify signature 
+    const expectedSignature = cloudinary.utils.api_sign_request(
+        {public_id: formData.get("public_id"),
+         version: formData.get("version")
+        },cloudinaryConfig.api_secret as string);
+    if (expectedSignature === formData.get("signature")){
+        foundItem.photo = formData.get("public_id");
+    }
 
     
     return {
@@ -57,7 +77,7 @@ export const reportFound = async (prevState: any, formData: FormData): Promise<a
 
     const results = await sharedFoundLogic(formData, user)
 
-    if (results.errors.item || results.errors.place){
+    if (results.errors.item || results.errors.place || results.errors.photo){
         return {
             errors: results.errors,
         }
@@ -74,15 +94,14 @@ export const reportFound = async (prevState: any, formData: FormData): Promise<a
 export const editFound = async (prevState: any, formData: FormData): Promise<any>  => {
     const user = await getUserFromCookie();
 
-    if (!user){
-        
+    if (!user){    
         return redirect("/");
        
     }
 
     const results = await sharedFoundLogic(formData, user)
 
-    if (results.errors.item || results.errors.place){
+    if (results.errors.item || results.errors.place || results.errors.photo){
         return {
             errors: results.errors,
         }

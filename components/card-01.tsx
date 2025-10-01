@@ -4,7 +4,7 @@ import * as React from "react";
 import { motion } from "framer-motion"; 
 import DropdownMenuWithRadioGroup from "./dropdown-menu-04";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { OctagonAlert} from "lucide-react";
+import { OctagonAlert, Signature} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,8 +19,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "./ui/textarea";
 import { useActionState } from "react";
 import { reportFound, editFound } from "@/actions/foundController";
-import { error } from "console";
+import { CldUploadWidget } from 'next-cloudinary';
 import { ObjectId } from "mongodb";
+import { toast } from "sonner";
+import { useState } from "react";
+
 
 export default function CardDemo({ action,foundItemId }: { action: "create" | "edit"; 
                                                           foundItemId?:{
@@ -29,7 +32,13 @@ export default function CardDemo({ action,foundItemId }: { action: "create" | "e
                                                             place?:string;
                                                             category?:string;
                                                             author?:string;
-                                      };}) {
+                                                            photo?:string;
+                                                            };}) {
+
+  const [signature, setSignature] = useState("");
+  const [version, setVersion] = useState("");
+  const [public_id, setPublic_id] = useState("");
+
 
   // This will decide which action will be used
   let actualAction;
@@ -92,6 +101,51 @@ export default function CardDemo({ action,foundItemId }: { action: "create" | "e
                   )}
               </div>
 
+              <div className="flex flex-col space-y-1.5 w-50">
+                  <CldUploadWidget 
+                  onSuccess={(result, {widget}) => {
+                   toast.success("Upload Successful",{
+                    description: "Your image has been uploaded successfully.",
+                   });
+                   setSignature((result?.info as { signature: string }).signature);
+                   setPublic_id((result?.info as { public_id: string }).public_id);
+                   setVersion((result?.info as { version: number }).version.toString());
+
+                  }}
+                  onQueuesEnd={( result, { widget}) => {
+                    if (widget) {
+                      widget.close();
+                    }
+                  }}
+                  signatureEndpoint="/widget-signature">
+                    {({ open }) => {
+                        function handleClick(e: React.MouseEvent<HTMLButtonElement>){ // If not work I should Use any 
+                          e.preventDefault();
+                          open();
+                        }
+
+
+                      return (
+                        <Button variant="outline" onClick={handleClick}>
+                          Upload an Image
+                        </Button>
+                      );
+                    }}
+                  </CldUploadWidget>
+                  {formState.errors?.photo && (
+                      <Alert className="bg-destructive/10 dark:bg-destructive/20 border-none mt-0.5">
+                          <OctagonAlert className="h-4 w-4 !text-destructive" />
+                              <AlertTitle>
+                                  <span>{formState.errors?.photo}</span>
+                              </AlertTitle>
+                      </Alert>
+                  )}
+              </div>
+              {/* I placed input for image in here I don't know why because it work*/}
+            <input type="hidden" name="public_id" value={public_id}  />
+            <input type="hidden" name="version" value={version} />
+            <input type="hidden" name="signature" value={signature} />
+
               <div className="flex flex-col space-y-1.5">
                 <div className="absolute">
                   <DropdownMenuWithRadioGroup />
@@ -100,6 +154,9 @@ export default function CardDemo({ action,foundItemId }: { action: "create" | "e
             </div>
           </CardContent>
           <CardFooter className="flex justify-end mt-8">
+            
+
+
             <input type="hidden" name="foundFormId" defaultValue={foundItemId?._id} />
             <Button className="w-26">Submit</Button>
             

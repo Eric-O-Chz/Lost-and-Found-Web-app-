@@ -43,7 +43,7 @@ export default async function EditingForFoundItems({ params }: { params: Promise
     author: doc.author?.toString(),
   };
 
-    if ((user as any).userId !== plainDoc.author){
+    if ((user as { userId: string }).userId !== plainDoc.author){
       return redirect("/");
     }
     
